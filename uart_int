@@ -1,0 +1,116 @@
+#include <lpc21xx.h>
+#include "types.h"
+#include "defines_for_all.h"
+#include "delay.h"
+s8 buff[16]="hello", dummy;
+u8 ch;
+u32 i=0,r_flag=0;
+void UART0_isr(void) __irq
+{
+    u32 iid;
+    iid = U0IIR;
+    iid = (iid >> 1) & 0x07;
+    if(iid == 0x02)
+    {
+        ch = U0RBR;
+        if(ch != '\r'||ch!='\n')
+        {
+            if(i < sizeof(buff)-1)
+                buff[i++] = ch;
+        }
+        else
+        {
+            buff[i] = '\0';
+            i = 0;
+            r_flag = 0;
+        }
+    }
+    else
+    {
+        dummy = U0IIR;
+    }
+
+    VICVectAddr = 0;
+}
+void init_uart(void)
+{
+    PINSEL0 |= 0x00000005;
+    U0LCR = (1<<DLAB) | WORD_LEN_8BITS;
+    U0DLL = DIVISOR;
+    U0DLM = DIVISOR >> 8;
+     U0LCR &= ~(1<<DLAB);
+
+   #if UART_INT_ENABLE > 0
+    VICIntSelect = 0;
+    VICVectAddr0 = (unsigned long)UART0_isr;
+    VICVectCntl0 = 0x20 | 6;
+    VICIntEnable |= (1 << 6);
+    U0IER = 0x01;
+    #endif
+}
+
+void uart_tx(u8 sdat)
+{
+    U0THR = sdat;
+    while(((U0LSR >> TEMT_BIT) & 1) == 0);
+}
+
+u8 uart_rx(void)
+{
+    while(((U0LSR >> RDR_BIT) & 1) == 0);
+    return U0RBR;
+}
+
+void uart_int(unsigned int n)
+{
+    unsigned char a[10];
+    int i=0;
+    if(n == 0)
+    {
+        uart_tx('0');
+        return;
+    }
+    while(n > 0)
+    {
+        a[i++] = (n % 10) + '0';
+        n = n / 10;
+         }
+    while(--i >= 0)
+        uart_tx(a[i]);
+}
+
+void uart_float(float f)
+{
+    int intpart = (int)f;
+    int decpart = (int)((f - intpart) * 100);
+
+    uart_int(intpart);
+    uart_tx('.');
+    if(decpart < 10) uart_tx('0');
+    uart_int(decpart);
+}
+
+void uart_str(char *s)
+{
+    while(*s)
+        uart_tx(*s++);
+}
+
+int main()
+{
+    init_uart();
+    while(1)
+    {
+        while(r_flag == 1);
+        uart_str("You typed: \r\n ");
+        uart_str(buff);
+       // uart_str("\n\r");
+
+        uart_str("Float test: ");
+        uart_float(245.21);
+        uart_str("\n\r");
+
+        r_flag = 0;
+        delay_s(1);
+    }
+}
