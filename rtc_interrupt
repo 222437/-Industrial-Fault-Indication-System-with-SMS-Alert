@@ -1,0 +1,40 @@
+#include <lpc21xx.h>
+#include "types.h"
+#include "lcd.h"
+#include "lcd_defines.h"
+#include "delay.h"
+#include "rtc.h"
+void RTC_Init(void);
+s32 hour,min,sec;
+int cnt=0;
+volatile unsigned int last_sec = 61;
+
+void RTC_ISR(void) __irq
+{
+    unsigned int current_sec = SEC;
+    if (current_sec != last_sec) {
+        IOSET0=1<<7;
+                        IOCLR0=1<<7;
+                                        u32_lcd(SEC);
+        }
+
+    ILR = 0x01;
+    VICVectAddr = 0x00;
+}
+int main()
+{
+        RTC_Init();
+        init_lcd();
+        IODIR0|=1<<7;
+        char_lcd('h');
+        str_lcd("rtc info");
+         CCR = 0x01;
+    CIIR = 0x02;
+    ILR  = 0x01;
+
+    VICVectAddr0 = (unsigned long)RTC_ISR;
+    VICVectCntl0 = 0x20 | 13;
+    VICIntEnable = (1 << 13);
+          while (1) ;
+
+}
